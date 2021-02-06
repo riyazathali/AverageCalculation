@@ -1,9 +1,8 @@
 import java.io.IOException;
-import java.net.URI;
 import java.util.StringTokenizer;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -12,46 +11,57 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-public class AverageCalculation {
 
-    public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable> {
+public class AverageCalculation
+{
+    public static class TokenizerMapper
+            extends Mapper<Object, Text, Text, IntWritable>
+    {
+        private static final IntWritable num = new IntWritable();
+        private Text NumberKey = new Text();
 
 
-        private final static IntWritable one = new IntWritable(1);
-        private Text word = new Text();
-
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-            StringTokenizer itr = new StringTokenizer(value.toString());
+        public void map(Object key, Text value, Mapper<Object, Text, Text, IntWritable>.Context context) throws IOException, InterruptedException {
+            StringTokenizer itr = new StringTokenizer(value.toString(), "\n");
             while (itr.hasMoreTokens()) {
-                word.set(itr.nextToken());
-                context.write(word, one);
+                this.NumberKey.set("");
+                num.set(Integer.parseInt(itr.nextToken()));
+                context.write(this.NumberKey, num);
             }
         }
     }
 
-    public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-        private IntWritable result = new IntWritable();
+    public static class Reduce
+            extends Reducer<Text, IntWritable, Text, FloatWritable> {
+        private FloatWritable averageResult = new FloatWritable();
+        Float numberAverage = Float.valueOf(0.0F);
+        Float counofNumbers = Float.valueOf(0.0F);
+        int sumValue = 0;
 
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-            int sum = 0;
+
+
+
+        public void reduce(Text key, Iterable<IntWritable> values, Reducer<Text, IntWritable, Text, FloatWritable>.Context context) throws IOException, InterruptedException {
+            Text averageSalutation = new Text("Final Average of all the numbers = ");
             for (IntWritable val : values) {
-                sum += val.get();
+                this.sumValue += val.get();
+                this.counofNumbers = Float.valueOf(this.counofNumbers.floatValue() + 1.0F);
             }
-            result.set(sum);
-            context.write(key, result);
+            this.numberAverage = Float.valueOf(this.sumValue / this.counofNumbers.floatValue());
+            this.averageResult.set(this.numberAverage.floatValue());
+            context.write(averageSalutation, this.averageResult);
         }
     }
+
+
+
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
         Job job = Job.getInstance(conf, "Average Calculation");
-        Path outputPath = new Path(args[1]);
-        FileSystem fs = FileSystem.get(new URI(outputPath.toString()), conf);
-        fs.delete(outputPath, true);
         job.setJarByClass(AverageCalculation.class);
         job.setMapperClass(TokenizerMapper.class);
-        job.setCombinerClass(IntSumReducer.class);
-        job.setReducerClass(IntSumReducer.class);
+        job.setReducerClass(Reduce.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
         FileInputFormat.addInputPath(job, new Path(args[0]));
